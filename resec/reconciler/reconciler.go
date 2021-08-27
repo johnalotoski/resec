@@ -13,6 +13,7 @@ import (
 	"github.com/seatgeek/resec/resec/consul"
 	"github.com/seatgeek/resec/resec/redis"
 	"github.com/seatgeek/resec/resec/state"
+	"github.com/seatgeek/resec/resec/zk"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/d4l3k/messagediff.v1"
 )
@@ -49,6 +50,7 @@ type Reconciler struct {
 	stopCh                 chan interface{}      // stop channel (internal shutdown)
 	stateServerOn          bool                  // activate the state server?
 	stateListenAddress     string                // address:port for status server
+	zookeeperCommandCh     chan<- zk.Command
 	sync.Mutex
 }
 
@@ -60,6 +62,11 @@ func (r *Reconciler) sendRedisCommand(cmd redis.CommandName) {
 // sendConsulCommand will build and send a Consul command
 func (r *Reconciler) sendConsulCommand(cmd consul.CommandName) {
 	r.consulCommandCh <- consul.NewCommand(cmd, r.redisState)
+}
+
+// sendZookeeperCommand will build and send a Zookeeper command
+func (r *Reconciler) sendZookeeperCommand(cmd zk.CommandName) {
+	r.zookeeperCommandCh <- zk.NewCommand(cmd, r.redisState)
 }
 
 // Run starts the procedure
@@ -157,14 +164,21 @@ func (r *Reconciler) apply(state resultType) {
 		r.logger.Debugf("Redis is not healthy, deregister Consul service and don't do any further changes")
 		r.sendConsulCommand(consul.ReleaseLockCommand)
 		r.sendConsulCommand(consul.DeregisterServiceCommand)
+		r.sendZookeeperCommand(zk.NotMasterElected)
 
 	case ResultUpdateService:
 		r.sendConsulCommand(consul.UpdateServiceCommand)
+		if r.consulState.IsMaster() && r.redisState.IsRedisMaster() {
+			r.sendZookeeperCommand(zk.MasterElected)
+		} else {
+			r.sendZookeeperCommand(zk.NotMasterElected)
+		}
 
 	case ResultRunAsMaster:
 		r.logger.Info("Configure Redis as master")
 		r.sendRedisCommand(redis.RunAsMasterCommand)
 		r.sendConsulCommand(consul.RegisterServiceCommand)
+		r.sendZookeeperCommand(zk.MasterElected)
 
 	case ResultNoMasterElected:
 		r.logger.Warn("Currently no master Redis is elected in Consul catalog, can't enslave local Redis")
@@ -172,14 +186,17 @@ func (r *Reconciler) apply(state resultType) {
 	case ResultRunAsSlave:
 		r.logger.Info("Reconfigure Redis as slave")
 		r.sendRedisCommand(redis.RunAsSlaveCommand)
+		r.sendZookeeperCommand(zk.NotMasterElected)
 
 	case ResultMasterSyncInProgress:
 		r.logger.Warn("Master sync in progress, can't serve traffic")
 		r.sendConsulCommand(consul.DeregisterServiceCommand)
+		r.sendZookeeperCommand(zk.NotMasterElected)
 
 	case ResultMasterLinkDown:
 		r.logger.Warn("Master link is down, can't serve traffic")
 		r.sendConsulCommand(consul.DeregisterServiceCommand)
+		r.sendZookeeperCommand(zk.NotMasterElected)
 
 	default:
 		r.logger.Errorf("Unknown state: %s", state)

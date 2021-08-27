@@ -7,6 +7,7 @@ import (
 
 	"github.com/seatgeek/resec/resec/consul"
 	"github.com/seatgeek/resec/resec/redis"
+	"github.com/seatgeek/resec/resec/zk"
 	"github.com/urfave/cli/v2"
 )
 
@@ -18,6 +19,11 @@ func NewReconciler(c *cli.Context) (*Reconciler, error) {
 	}
 
 	consulConnection, err := consul.NewConnection(c, redisConnection.Config())
+	if err != nil {
+		return nil, err
+	}
+
+	zookeeperConnection, err := zk.NewConnection()
 	if err != nil {
 		return nil, err
 	}
@@ -34,6 +40,7 @@ func NewReconciler(c *cli.Context) (*Reconciler, error) {
 		stopCh:                 make(chan interface{}, 1),
 		stateServerOn:          c.Bool("state-server"),
 		stateListenAddress:     c.String("state-listen-addr"),
+		zookeeperCommandCh:     zookeeperConnection.GetCommandWriter(),
 	}
 
 	signal.Notify(reconciler.signalCh, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
@@ -41,6 +48,8 @@ func NewReconciler(c *cli.Context) (*Reconciler, error) {
 
 	go redisConnection.CommandRunner()
 	go consulConnection.CommandRunner()
+	go zookeeperConnection.CommandRunner()
+	//go zk.Run()
 
 	return reconciler, nil
 }

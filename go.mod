@@ -9,6 +9,7 @@ require (
 	github.com/d4l3k/messagediff v1.2.1 // indirect
 	github.com/fatih/color v1.10.0 // indirect
 	github.com/go-redis/redis v6.15.9+incompatible
+	github.com/go-zookeeper/zk v1.0.2 // indirect
 	github.com/hashicorp/consul/api v1.8.1
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v0.15.0 // indirect
