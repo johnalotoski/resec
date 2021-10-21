@@ -128,6 +128,16 @@ func main() {
 			Usage:   "IP:Port of the status interface",
 			EnvVars: []string{"STATE_LISTEN_ADDR"},
 		},
+		&cli.StringFlag{
+			Name:    "zk-servers",
+			Usage:   "IP:Port of Redis master node to be announced to Zookeeper as a comma separated list",
+			EnvVars: []string{"ZK_SERVERS"},
+		},
+		&cli.StringFlag{
+			Name:    "zk-base-path",
+			Usage:   "Path to be announced to Zookeeper",
+			EnvVars: []string{"ZK_BASE_PATH"},
+		},
 	}
 	app.Before = func(c *cli.Context) error {
 		level, err := log.ParseLevel(c.String("log-level"))

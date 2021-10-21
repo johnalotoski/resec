@@ -1,64 +1,40 @@
 package zk
 
 import (
-	"log"
-	"sync"
-	"time"
+	"encoding/json"
+	"fmt"
 
 	zkapi "github.com/go-zookeeper/zk"
 )
 
-func NewConnection() (*Manager, error) {
-	log.Printf("zk: NewConnection")
-	conn, _, err := zkapi.Connect([]string{"zk1:2181", "zk2:2181", "zk3:2181"}, 1*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("zk: Connected")
+const defaultRedisPort = 6379
 
-	return &Manager{
-		zkConn:    conn,
-		commandCh: make(chan Command, 1),
-	}, nil
+var zkPermission = zkapi.WorldACL(zkapi.PermAll)
+
+func (m *Manager) GetEventWriter() chan Event {
+	return m.eventCh
 }
 
-type Manager struct {
-	mu sync.Mutex
-
-	zkConn    *zkapi.Conn
-	commandCh chan Command
-	// state
-	registeredPath string // set if master
-}
-
-func (m *Manager) GetCommandWriter() chan Command {
-	return m.commandCh
-}
-
-func (m *Manager) CommandRunner() {
-	log.Printf("zk: CommandRunner start: %p", m)
+func (m *Manager) EventRunner() {
+	m.logger.Info("EventRunner start")
 	for {
 		select {
-		case command := <-m.commandCh:
+		case <-m.stopCh:
+			m.logger.Info("Shutting down zookeeper EventRunner")
+			m.deregisterMaster()
+			return
+		case command := <-m.eventCh:
 			switch command.Name() {
-			case MasterElected:
-				log.Printf("zk: %v", command.RedisState().Info)
+			case NodeAsMasterElected:
+				m.logger.Debugf("zk: %v", command.RedisState().Info)
+				m.logger.Infof("REDIS_ADDR: %s:%d", m.redisHost, m.redisPort)
 				m.registerMaster()
-			case NotMasterElected:
-				log.Printf("zk: %v", command.RedisState().Info)
+			case NodeNotAsMasterElected:
+				m.logger.Debugf("zk: %v", command.RedisState().Info)
 				m.deregisterMaster()
 			}
 		}
 	}
-	log.Println("zk: CommandRunner finished")
-}
-
-func (m *Manager) start() {
-
-}
-
-func (m *Manager) cleanup() {
-	m.deregisterMaster()
 }
 
 // register master node to zookeeper
@@ -66,46 +42,61 @@ func (m *Manager) registerMaster() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	log.Printf("zk: registerMaster: %p %s", m, m.registeredPath)
+	m.logger.Infof("registerMaster: %p %s", m, m.registeredPath)
 	if m.registeredPath != "" {
-		log.Println("zk master already registered")
+		m.logger.Info("zk master already registered")
 		return
 	}
 
-	p1, err1 := m.zkConn.Create("/gfredis", []byte{}, 0, zkapi.WorldACL(zkapi.PermAll))
-	p2, err2 := m.zkConn.Create("/gfredis/prod", []byte{}, 0, zkapi.WorldACL(zkapi.PermAll))
-	p3, err3 := m.zkConn.Create("/gfredis/prod/question", []byte{}, 0, zkapi.WorldACL(zkapi.PermAll))
-	p4, err4 := m.zkConn.Create("/gfredis/prod/question/nodes", []byte{}, 0, zkapi.WorldACL(zkapi.PermAll))
+	zkPath := fmt.Sprintf("%s/%s", m.zkBasePath, "nodes")
+	err := zkEnsurePath(m.zkConn, zkPath)
+	if err != nil {
+		m.logger.Errorf("Failed to ensure path in zk: %v", err)
+		return
+	}
 
-	log.Println(p1, err1)
-	log.Println(p2, err2)
-	log.Println(p3, err3)
-	log.Println(p4, err4)
+	data, err := json.Marshal(map[string]interface{}{
+		"serviceEndpoint": map[string]interface{}{
+			"host": m.redisHost,
+			"port": m.redisPort,
+		},
+		"additionalEndpoints": map[string]interface{}{},
+		"status":              "ALIVE",
+	})
+	if err != nil {
+		m.logger.Errorf("Failed to ensure path in zk: %v", err)
+		return
+	}
 
-	path, err := m.zkConn.Create("/gfredis/prod/question/nodes/member_", []byte("data"), zkapi.FlagSequence|zkapi.FlagEphemeral, zkapi.WorldACL(zkapi.PermAll))
-	handleError(err)
-	log.Printf("zk master registered: %s", path)
+	memberPath := fmt.Sprintf("%s/member_", zkPath)
+	path, err := m.zkConn.Create(memberPath, []byte(data), zkapi.FlagSequence|zkapi.FlagEphemeral, zkPermission)
+	if err != nil {
+		m.logger.Errorf("Failed creating member %s in zookeeper: %v", memberPath, err)
+		return
+	}
 
+	m.logger.Infof("Registered Master: %s", path)
 	m.registeredPath = path
 }
 
 // deregister master node from zookeeper
 func (m *Manager) deregisterMaster() {
+	var err error
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.registeredPath == "" {
-		log.Println("zk master not registered, nothing to deregister")
+		m.logger.Debug("Master not registered, nothing to deregister")
 		return
 	}
 
-	m.zkConn.Delete(m.registeredPath, 0)
-	log.Printf("zk master deregistered: %s", m.registeredPath)
+	err = m.zkConn.Delete(m.registeredPath, 0)
+	if err != nil {
+		m.logger.Errorf("Failed to delete path %s", m.registeredPath)
+		return
+	}
 
+	m.logger.Infof("zk master deregistered: %s", m.registeredPath)
 	m.registeredPath = ""
-}
-
-func handleError(err error) {
-	log.Println(err)
-	//TODO
 }

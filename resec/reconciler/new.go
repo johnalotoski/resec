@@ -23,7 +23,7 @@ func NewReconciler(c *cli.Context) (*Reconciler, error) {
 		return nil, err
 	}
 
-	zookeeperConnection, err := zk.NewConnection()
+	zookeeperConnection, err := zk.NewConnection(c)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func NewReconciler(c *cli.Context) (*Reconciler, error) {
 		stopCh:                 make(chan interface{}, 1),
 		stateServerOn:          c.Bool("state-server"),
 		stateListenAddress:     c.String("state-listen-addr"),
-		zookeeperCommandCh:     zookeeperConnection.GetCommandWriter(),
+		zookeeperEventCh:       zookeeperConnection.GetEventWriter(),
 	}
 
 	signal.Notify(reconciler.signalCh, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
@@ -48,8 +48,7 @@ func NewReconciler(c *cli.Context) (*Reconciler, error) {
 
 	go redisConnection.CommandRunner()
 	go consulConnection.CommandRunner()
-	go zookeeperConnection.CommandRunner()
-	//go zk.Run()
+	go zookeeperConnection.EventRunner()
 
 	return reconciler, nil
 }
