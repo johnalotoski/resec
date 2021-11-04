@@ -39,6 +39,10 @@ func (m *Manager) EventRunner() {
 
 // register master node to zookeeper
 func (m *Manager) registerMaster() {
+	if m.zkConn == nil { // no zookeeper configured
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -81,6 +85,10 @@ func (m *Manager) registerMaster() {
 
 // deregister master node from zookeeper
 func (m *Manager) deregisterMaster() {
+	if m.zkConn == nil { // no zookeeper configured
+		return
+	}
+
 	var err error
 
 	m.mu.Lock()
