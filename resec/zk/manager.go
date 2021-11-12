@@ -46,7 +46,7 @@ func (m *Manager) registerMaster() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.logger.Infof("registerMaster: %p %s", m, m.registeredPath)
+	m.logger.Debugf("registerMaster: %p %s", m, m.registeredPath)
 	if m.registeredPath != "" {
 		m.logger.Info("zk master already registered")
 		return
