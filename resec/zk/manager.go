@@ -52,7 +52,7 @@ func (m *Manager) registerMaster() {
 		return
 	}
 
-	zkPath := fmt.Sprintf("%s/%s", m.zkBasePath, "nodes")
+	zkPath := m.zkBasePath
 	err := zkEnsurePath(m.zkConn, zkPath)
 	if err != nil {
 		m.logger.Errorf("Failed to ensure path in zk: %v", err)
