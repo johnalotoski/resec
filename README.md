@@ -22,6 +22,8 @@ Resec continuously monitors the status of redis instance and if it's alive, It s
   * once lock acquired it stops watching for master service changes
   * promotes redis to be *SLAVE OF NO ONE*
 
+In addition, Resec allows you to announce the elected master node to zookeeper.
+
 ### Services and health checks
 
 Resec registers service with [TTL](https://www.consul.io/docs/agent/checkshtml#TTL) health check with TTL twice as big as `HEALTHCHECK_INTERVAL` and updates consul every `HEALTHCHECK_INTERVAL` to maintain service in passing state
@@ -80,6 +82,8 @@ STATE_SERVER          | False          | Activates simple web server for interna
 STATE_LISTEN_ADDR     | 0.0.0.0:8080   | 
 LOG_LEVEL             | INFO           | Options are "DEBUG", "INFO", "WARN", "ERROR"
 LOG_FORMAT            | text           | Options are "text", "json", "gelf"
+ZK_SERVERS            |                | IP:Port of Redis master node to be announced to Zookeeper as a comma separated list. Only used when set.
+ZK_BASE_PATH          |                | Path to be announced to Zookeeper
 
 ##### Environment variables to configure communication with consul are similar to [Consul CLI](https://www.consul.io/docs/commands/index.html#environment-variables)
 
