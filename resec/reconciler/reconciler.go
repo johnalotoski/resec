@@ -284,7 +284,7 @@ func (r *Reconciler) overviewPage() string {
 	}
 
 	o += "<ul>" +
-		"<li> <a href=./info>redis info</a>" +
+		"<li> <a href=./info>redis info</a> - Caution, only updated on cluster change" +
 		"<li> <a href=./state>resec state</a>" +
 		"<li> <a href=./health>healthcheck</a>" +
 		"</ul>"
